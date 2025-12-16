@@ -43,6 +43,8 @@ MAP_VILLAGE = [
     [0,0,0,0,0,0,0,0,4,0,0,0,0,0,0,0,0,0,0,0]
 ]
 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
 # =====================
 # ゲーム本体
 # =====================
@@ -60,8 +62,10 @@ class Game:
         self.player_y = 1 # 初期Y座標
 
         # 移動制御（押しっぱなし用）
+        self.MOVE_INTERVAL_FIRST = 6   # 押し始め（遅い）
+        self.MOVE_INTERVAL_REPEAT = 6   # 押しっぱなし（速い）
         self.move_cooltime = 0
-        self.MOVE_INTERVAL = 10  # 小さいほど速い
+        self.moving = False
 
         # 画像ロード
         self.tile_images = self.load_tiles() # タイル画像
@@ -70,10 +74,14 @@ class Game:
     # ---------------------
     # 画像ロード共通
     # ---------------------
-    def load_image(self, path): # 画像ロード共通関数
-        if os.path.exists(path): # ファイル存在確認
-            return pygame.image.load(path).convert_alpha() # 画像ロード
-        return None # ファイル無ければNone返す
+    def load_image(self, relative_path):
+        path = os.path.join(BASE_DIR, relative_path)
+        if not os.path.exists(path):
+            print("画像が見つかりません:", path)
+            return None
+        print("画像読み込み成功:", path)
+        return pygame.image.load(path).convert_alpha()
+    
 
     def load_tiles(self): # タイル画像ロード
         tiles = {} # タイル辞書
@@ -111,19 +119,27 @@ class Game:
             return
 
         keys = pygame.key.get_pressed()
-        moved = False
+        dx, dy = 0, 0
 
         if keys[pygame.K_LEFT]:
-            moved = self.move_player(-1, 0)
+            dx = -1
         elif keys[pygame.K_RIGHT]:
-            moved = self.move_player(1, 0)
+            dx = 1
         elif keys[pygame.K_UP]:
-            moved = self.move_player(0, -1)
+            dy = -1
         elif keys[pygame.K_DOWN]:
-            moved = self.move_player(0, 1)
+            dy = 1
 
-        if moved:
-            self.move_cooltime = self.MOVE_INTERVAL
+        if dx != 0 or dy != 0:
+            moved = self.move_player(dx, dy)
+            if moved:
+                if not self.moving:
+                    self.move_cooltime = self.MOVE_INTERVAL_FIRST
+                    self.moving = True
+                else:
+                    self.move_cooltime = self.MOVE_INTERVAL_REPEAT
+        else:
+            self.moving = False
 
     # ---------------------
     # プレイヤー移動
@@ -143,6 +159,8 @@ class Game:
                 # ランダムエンカウント（例）
                 if tile == 0 and random.randint(0, 100) < 5: # 草タイルで5%の確率
                     print("敵が現れた！（仮）") # エンカウントメッセージ
+                return True # 移動成功
+        return False # 移動失敗
 
     # ---------------------
     # 描画
@@ -170,8 +188,12 @@ class Game:
         px = self.player_x * TILE_SIZE # 画面X座標
         py = self.player_y * TILE_SIZE # 画面Y座標
 
-        if self.player_image: # 画像がある場合
-            self.screen.blit(self.player_image, (px, py)) # 画像描画
+        if self.player_image:
+            img = pygame.transform.scale(
+                self.player_image,
+                (TILE_SIZE, TILE_SIZE)
+                )
+            self.screen.blit(img, (px, py))
         else: # 画像が無い場合
             pygame.draw.rect( # プレイヤー描画
                 self.screen, # 画面
