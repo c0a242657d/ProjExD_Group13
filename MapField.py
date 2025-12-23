@@ -153,11 +153,15 @@ class MapField: # フィールド画面クラス
         map_width = len(self.map_data[0]) * TILE_SIZE # マップ幅
         map_height = len(self.map_data) * TILE_SIZE # マップ高さ
 
-        camera_x = self.player_x * TILE_SIZE - SCREEN_WIDTH // 2 # カメラX座標
-        camera_y = self.player_y * TILE_SIZE - SCREEN_HEIGHT // 2 # カメラY座標
+        # カメラがプレイヤーを中心に捉えるように計算　左上が基準
+        camera_x = self.player_x * TILE_SIZE - SCREEN_WIDTH // 2 # カメラX座標 = プレイヤーX座標 * タイルサイズ - 画面幅 // 2
+        camera_y = self.player_y * TILE_SIZE - SCREEN_HEIGHT // 2 # カメラY座標 = プレイヤーY座標 * タイルサイズ - 画面高さ // 2
 
+        # カメラ位置をマップの範囲内に制限 0以上 マップ幅-画面幅以下
         camera_x = max(0, min(camera_x, map_width - SCREEN_WIDTH)) # カメラX座標調整
         camera_y = max(0, min(camera_y, map_height - SCREEN_HEIGHT)) # カメラY座標調整
+
+        print(camera_x, camera_y)  # デバッグ用カメラ位置表示
 
         # マップ描画
         for y, row in enumerate(self.map_data): # マップデータ走査
