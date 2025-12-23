@@ -2,7 +2,7 @@ import pygame as pg
 import os
 import sys
 
-import MapField
+import Map_Campus
 
 os.chdir(os.path.dirname(os.path.abspath(__file__))) # カレントディレクトリをこのファイルの場所に変更
 
@@ -11,13 +11,13 @@ class MainGame:
         pg.init()
 
         # 画面作成
-        self.screen = pg.display.set_mode((MapField.SCREEN_WIDTH, MapField.SCREEN_HEIGHT)) # 画面サイズ
+        self.screen = pg.display.set_mode((Map_Campus.SCREEN_WIDTH, Map_Campus.SCREEN_HEIGHT)) # 画面サイズ
         pg.display.set_caption("Map Test Main") # 画面タイトル
 
         self.clock = pg.time.Clock() # クロック設定
 
         # フィールド生成（testsub.pyのクラスをそのまま使う）
-        self.map_field = MapField.MapField(self.screen) # フィールド画面クラス
+        self.map_field = Map_Campus.Map_Campus(self.screen) # フィールド画面クラス
 
         # 状態管理
         self.running = True # メインループ制御フラグ
