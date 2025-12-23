@@ -3,6 +3,9 @@ import sys
 import random
 import os
 
+import MapField
+
+os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
 # --- 設定 ---
 SCREEN_WIDTH = 800
@@ -57,6 +60,8 @@ class Game:
         self.enemy_hp = 0
         self.battle_message = ""
         self.battle_sub_message = ""
+
+        self.map_field = MapField.MapField(self.screen) # フィールド画面クラス C0A24265
 
 
     def get_japanese_font(self, size):
@@ -113,26 +118,35 @@ class Game:
         if self.state == STATE_MAP:
             keys = pygame.key.get_pressed()
             moved = False
-           
-            # 移動処理
-            if keys[pygame.K_LEFT]:
-                self.player_pos[0] -= self.speed
-                moved = True
-            if keys[pygame.K_RIGHT]:
-                self.player_pos[0] += self.speed
-                moved = True
-            if keys[pygame.K_UP]:
-                self.player_pos[1] -= self.speed
-                moved = True
-            if keys[pygame.K_DOWN]:
-                self.player_pos[1] += self.speed
-                moved = True
+
+            if self.current_map == MAP_FIELD: # フィールドマップ時 C0A24265
+                prev_x, prev_y = self.map_field.player_x, self.map_field.player_y # 移動前座標保存 C0A24265
+                self.map_field.update() # フィールド画面更新 C0A24265
+                if (prev_x, prev_y) != (self.map_field.player_x, self.map_field.player_y): # 座標が変化したら C0A24265
+                    moved = True # 移動フラグ立て C0A24265
+                if MapField.check_move(self.map_field): # マップ移動判定 C0A24265
+                    self.current_map = MAP_CAMPUS
+            else:
+                # 移動処理
+                if keys[pygame.K_LEFT]:
+                    self.player_pos[0] -= self.speed
+                    moved = True
+                if keys[pygame.K_RIGHT]:
+                    self.player_pos[0] += self.speed
+                    moved = True
+                if keys[pygame.K_UP]:
+                    self.player_pos[1] -= self.speed
+                    moved = True
+                if keys[pygame.K_DOWN]:
+                    self.player_pos[1] += self.speed
+                    moved = True
 
 
             # マップ遷移判定とエンカウント
             self.check_map_transition()
             if moved and self.current_map == MAP_FIELD:
                 self.check_random_encounter()
+
            
             # ボスイベント判定（キャンパス奥地）
             if self.current_map == MAP_CAMPUS and self.player_pos[0] > 700:
@@ -198,16 +212,21 @@ class Game:
                 color = (100, 200, 100)
                 loc_text = "最初の村（右へ進もう）"
             elif self.current_map == MAP_FIELD:
-                color = GREEN
-                loc_text = "外の散策エリア（敵が出ます）"
+                # color = GREEN
+                # loc_text = "外の散策エリア（敵が出ます）"
+                pass # フィールド画面は testsub.MapField クラスで描画 C0A24265
             elif self.current_map == MAP_CAMPUS:
                 color = GRAY
                 loc_text = "八王子キャンパス（奥にボスがいます）"
            
             pygame.draw.rect(self.screen, color, (0, 0, SCREEN_WIDTH, SCREEN_HEIGHT))
-           
-            # プレイヤー（こうかとん）
-            pygame.draw.rect(self.screen, RED, (*self.player_pos, self.player_size, self.player_size))
+            
+            if self.current_map == MAP_FIELD: # フィールドマップ時 C0A24265
+                self.map_field.draw() # フィールド画面描画 C0A24265
+            
+            if self.current_map != MAP_FIELD: # フィールドマップ以外はこうかとん描画 C0A24265
+                # プレイヤー（こうかとん）
+                pygame.draw.rect(self.screen, RED, (*self.player_pos, self.player_size, self.player_size))
            
             # ガイド表示
             text = self.font.render(loc_text, True, BLACK)

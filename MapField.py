@@ -38,18 +38,18 @@ MAP_FIELD = [
     [0,0,0,0,0,0,0,0,4,4,4,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
 ]
 
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__)) # 現在のディレクトリ
 
-def check_move(player_x, player_y):
+def check_move(mapfield):
     """
     もしプレイヤーがx=24,y=9にいるなら次のワールドに移動する指示を返す
     引数:
-        player_x: プレイヤーのX座標
-        player_y: プレイヤーのY座標
+        mapfield: MapFieldオブジェクト
     戻り値:
         True または None
     """
-    if player_x == 24 and player_y == 9:
+    if mapfield.player_x == 24 and mapfield.player_y == 9:
         return True
     return None
 
@@ -66,23 +66,23 @@ def load_image(path): # 画像読み込み
         return pygame.image.load(full).convert_alpha() # 画像読み込み
     return None # 画像なし
 
-
 class MapField: # フィールド画面クラス
     def __init__(self, screen): # 初期化
         self.screen = screen # 画面情報
         self.map_data = MAP_FIELD # マップデータ
 
-        self.player_x = 1 # プレイヤー座標
-        self.player_y = 1 # プレイヤー座標
+        self.player_x = 0 # プレイヤー座標
+        self.player_y = 6 # プレイヤー座標
 
         self.move_cool = 0 # 移動クールタイム
 
+        # プレイヤー画像読み込み
         self.tile_images = self.load_tiles() # タイル画像読み込み
-        self.player_img_flont = load_image("fig/map_mahou_1.png") # プレイヤー画像読み込み
-        self.player_img_back = load_image("fig/map_mahou_b_1.png") # プレイヤー画像読み込み
-        self.player_img_right = load_image("fig/map_mahou_r_1.png") # プレイヤー画像読み込み
-        self.player_img_left = load_image("fig/map_mahou_l_1.png") # プレイヤー画像読み込み
-        self.player_img = self.player_img_flont # 初期プレイヤー画像
+        self.player_img_left = load_image("fig/map_mahou_l_1.png")
+        self.player_img_right = load_image("fig/map_mahou_r_1.png")
+        self.player_img_back = load_image("fig/map_mahou_b_1.png")
+        self.player_img_flont = load_image("fig/map_mahou_1.png")
+        self.player_img = self.player_img_flont # 初期画像
 
     def load_tiles(self): # タイル画像読み込み
         tiles = {} # タイル画像辞書
@@ -127,6 +127,8 @@ class MapField: # フィールド画面クラス
                     self.player_y = ny # プレイヤーY座標更新
                     self.move_cool = 8 # 移動クールタイム設定
 
+        # print(self.player_x, self.player_y) # デバッグ用座標表示
+
     def draw(self): # 描画処理
         # カメラ位置計算
         map_width = len(self.map_data[0]) * TILE_SIZE # マップ幅
@@ -134,10 +136,9 @@ class MapField: # フィールド画面クラス
 
         camera_x = self.player_x * TILE_SIZE - SCREEN_WIDTH // 2 # カメラX座標
         camera_y = self.player_y * TILE_SIZE - SCREEN_HEIGHT // 2 # カメラY座標
-        print(camera_x, camera_y)
 
-        #camera_x = max(0, min(camera_x, map_width - SCREEN_WIDTH)) # カメラX座標調整
-        #camera_y = max(0, min(camera_y, map_height - SCREEN_HEIGHT)) # カメラY座標調整
+        camera_x = max(0, min(camera_x, map_width - SCREEN_WIDTH)) # カメラX座標調整
+        camera_y = max(0, min(camera_y, map_height - SCREEN_HEIGHT)) # カメラY座標調整
 
         # マップ描画
         for y, row in enumerate(self.map_data): # マップデータ走査
