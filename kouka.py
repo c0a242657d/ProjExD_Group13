@@ -1,20 +1,31 @@
+import os
 import pygame
 import sys
 import random
-import os
+
+
+os.chdir(os.path.dirname(os.path.abspath(__file__)))
 import MapField
 
 # --- 資料の必須要件: 実行ディレクトリをファイルのある場所に固定 ---
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
-# --- 設定 ---
-SCREEN_WIDTH = 800
+SCREEN_WIDTH = 800  # 設定
 SCREEN_HEIGHT = 600
 FPS = 60
 
-# 色定義
-WHITE = (255, 255, 255)
+
+WHITE = (255, 255, 255)  # 色定義
 BLACK = (0, 0, 0)
+GREEN = (34, 139, 34)
+GRAY = (169, 169, 169)
+RED = (255, 0, 0)  # こうかとん
+BLUE = (0, 0, 255)  # 雑魚敵
+YELLOW = (255, 215, 0)  # ボス
+CYAN = (0, 255, 255)  # MP
+FLASH_COLOR = (255, 255, 255)  # ダメージ時の閃光
+GOLD = (255, 223, 0)  # レベルアップ用
+
 GREEN = (34, 139, 34)
 GRAY = (169, 169, 169)
 RED = (255, 0, 0)       
@@ -24,14 +35,14 @@ CYAN = (0, 255, 255)
 FLASH_COLOR = (255, 255, 255) 
 GOLD = (255, 223, 0)    
 
-# 状態定数
-STATE_MAP = "MAP"
+STATE_MAP = "MAP"  # 状態定数
 STATE_BATTLE = "BATTLE"
 STATE_ENDING = "ENDING"
 STATE_GAME_OVER = "GAME_OVER"
+STATE_TRANSITION = "TRANSITION"  # 戦闘画面遷移。担当田代
 
-# マップID
-MAP_VILLAGE = 0
+
+MAP_VILLAGE = 0  # マップID
 MAP_FIELD = 1
 MAP_CAMPUS = 2
 
@@ -128,22 +139,21 @@ class Game:
         self.current_map = MAP_VILLAGE
         self.is_boss_battle = False
         
-        # 戦闘用変数
-        self.enemy_hp = 0
-        self.battle_message = ""
-        self.heals_left = 0
-        self.items = {"potion": 3, "atk": 1, "def": 1}
-        self.atk_buff_turns = 0
-        self.def_buff_turns = 0
-        self.atk_multiplier = 1.0
-        self.def_multiplier = 1.0
-        self.message_log = []
-        self.max_messages = 4
-        self.enemies = []
+        
+        self.enemies = []  # 戦闘用変数
         self.battle_logs = []
 
-        # MapFieldの初期化
-        self.map_field = MapField.MapField(self.screen)
+        self.transition_step = 0  # 遷移演出　担当田代
+        self.transition_speed = 32
+        self.next_is_boss = False
+
+    def get_japanese_font(self, size):
+        font_names = ["meiryo", "msgothic", "yugothic", "hiraginosans", "notosanscjkjp"]
+        available_fonts = pygame.font.get_fonts()
+        for name in font_names:
+            if name in available_fonts:
+                return pygame.font.SysFont(name, size)
+        return pygame.font.Font(None, size)
 
     def run(self):
         while True:
@@ -155,6 +165,9 @@ class Game:
     def handle_events(self):
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            
                 pygame.quit(); sys.exit()
             
             if event.type == pygame.KEYDOWN:
@@ -205,149 +218,97 @@ class Game:
                         pygame.quit(); sys.exit()
                     if self.state == STATE_GAME_OVER and event.key == pygame.K_r:
                         self.restart()
-
     def update(self):
-        # --- 戦闘中の更新 ---
-        if self.state == STATE_BATTLE:
+        if self.state == STATE_BATTLE:  # 敵のアニメーション処理
+            enemies_to_remove = []
+            
             for enemy in self.enemies:
-                if enemy.get("flash_timer", 0) > 0:
+                if enemy.get("flash_timer", 0) > 0:  # 1. ダメージ演出
                     enemy["flash_timer"] -= 1
+                if enemy["hp"] <= 0:  # 2. 死亡演出
+                    if "death_timer" not in enemy:
+                        enemy["death_timer"] = 60 
+                        self.battle_logs.append(f"{enemy['name']}をやっつけた！")
+                    enemy["death_timer"] -= 1
+                    if enemy["death_timer"] <= 0:  # タイマー0で消滅（経験値獲得）
+                        self.gain_exp(enemy["xp"])   # 経験値処理へ
+                        enemies_to_remove.append(enemy)
 
-        # --- マップ移動中の更新 ---
-        if self.state == STATE_MAP:
-            # フィールドマップ (MapField) の場合
-            if self.current_map == MAP_FIELD:
-                self.map_field.update()
-                
-                # 右端(x >= 24)に行けばどこでも次のマップへ遷移
-                if self.map_field.player_x >= 24:
-                     self.current_map = MAP_CAMPUS
-                     self.player_pos[0] = 10
-                
-                # ランダムエンカウント
-                if getattr(self.map_field, "move_cool", 0) == 8:
-                    self.check_random_encounter()
+            for enemy in enemies_to_remove:  # リスト消滅実行
+                if enemy in self.enemies:
+                    self.enemies.remove(enemy)
+            if len(self.enemies) == 0:
+                self.end_battle(win=True)
 
-            # 村 (MAP_VILLAGE) または キャンパス (MAP_CAMPUS) の場合
-            else:
-                keys = pygame.key.get_pressed()
-                moved = False
-                
-                # 移動方向に応じて画像を変更
-                if keys[pygame.K_LEFT]:  
-                    self.player_pos[0] -= self.speed
-                    moved = True
-                    if self.player_img: self.player_img = self.img_left
-                if keys[pygame.K_RIGHT]: 
-                    self.player_pos[0] += self.speed
-                    moved = True
-                    if self.player_img: self.player_img = self.img_right
-                if keys[pygame.K_UP]:    
-                    self.player_pos[1] -= self.speed
-                    moved = True
-                    if self.player_img: self.player_img = self.img_back
-                if keys[pygame.K_DOWN]:  
-                    self.player_pos[1] += self.speed
-                    moved = True
-                    if self.player_img: self.player_img = self.img_front
-                
-                # マップ端の遷移判定
-                self.check_map_transition()
-                
-                # キャンパス奥でのボス戦判定
-                if self.current_map == MAP_CAMPUS and self.player_pos[0] > 700:
-                    self.start_battle(is_boss=True)
-
-    def draw(self):
-        self.screen.fill(BLACK) # 画面クリア
-
-        # --- マップ画面の描画 ---
-        if self.state == STATE_MAP:
-            # 村マップ
-            if self.current_map == MAP_VILLAGE:
-                if self.bg_village:
-                    self.screen.blit(self.bg_village, (0, 0))
-                else:
-                    pygame.draw.rect(self.screen, (100, 200, 100), (0, 0, SCREEN_WIDTH, SCREEN_HEIGHT))
-                
-                # キャラクター描画
-                if self.player_img:
-                    self.screen.blit(self.player_img, self.player_pos)
-                else:
-                    pygame.draw.rect(self.screen, RED, (*self.player_pos, self.player_size, self.player_size))
-
-            # フィールドマップ (MapFieldが描画を担当)
-            elif self.current_map == MAP_FIELD:
-                self.map_field.draw() 
-
-            # キャンパスマップ
-            elif self.current_map == MAP_CAMPUS:
-                if self.bg_campus:
-                    self.screen.blit(self.bg_campus, (0, 0))
-                else:
-                    pygame.draw.rect(self.screen, GRAY, (0, 0, SCREEN_WIDTH, SCREEN_HEIGHT))
-                
-                # キャラクター描画
-                if self.player_img:
-                    self.screen.blit(self.player_img, self.player_pos)
-                else:
-                    pygame.draw.rect(self.screen, RED, (*self.player_pos, self.player_size, self.player_size))
-
-            # ステータス表示
-            status_str = f"Lv:{self.player_level}  HP:{self.player_hp}/{self.player_max_hp}"
-            status = self.font.render(status_str, True, BLACK)
-            self.screen.blit(status, (550, 20))
-
-        # --- 戦闘画面の描画 ---
-        elif self.state == STATE_BATTLE:
-            for enemy in self.enemies:
-                # 画像があれば表示
-                if enemy.get("img"):
-                    # ダメージ点滅（簡易的に画像を非表示にする）
-                    if enemy.get("flash_timer", 0) > 0 and (enemy["flash_timer"] // 2) % 2 == 0:
-                        pass # 点滅中は描画しない
-                    else:
-                        self.screen.blit(enemy["img"], enemy["rect"])
-                else:
-                    # 画像がない場合は四角形
-                    draw_color = FLASH_COLOR if enemy.get("flash_timer", 0) > 0 else enemy["color"]
-                    pygame.draw.rect(self.screen, draw_color, enemy["rect"])
-                
-                # HPバー描画
-                hp_rate = max(0, enemy["hp"] / enemy["max_hp"])
-                pygame.draw.rect(self.screen, RED, (enemy["rect"].x, enemy["rect"].y - 10, enemy["rect"].width, 5))
-                pygame.draw.rect(self.screen, GREEN, (enemy["rect"].x, enemy["rect"].y - 10, enemy["rect"].width * hp_rate, 5))
-
-            pygame.draw.rect(self.screen, BLACK, (0, 350, SCREEN_WIDTH, 250))
-            pygame.draw.rect(self.screen, WHITE, (0, 350, SCREEN_WIDTH, 250), 2)
+        if self.state == STATE_MAP:  # 移動画面処理
+            keys = pygame.key.get_pressed()
+            moved = False
             
-            y = 420
-            for log in self.message_log:
-                self.screen.blit(self.msg_font.render(log, True, WHITE), (50, y))
-                y += 25
-            
-            info = f"HP: {self.player_hp}  MP: {self.player_mp}  回復残: {self.heals_left}"
-            self.screen.blit(self.font.render(info, True, WHITE), (400, 420))
-            cmd = "[SPACE]攻撃 [H]回復 [1]薬 [2]攻 [3]防"
-            self.screen.blit(self.font.render(cmd, True, YELLOW), (50, 360))
+            if keys[pygame.K_LEFT]:
+                self.player_pos[0] -= self.speed
+                moved = True
+            if keys[pygame.K_RIGHT]:
+                self.player_pos[0] += self.speed
+                moved = True
+            if keys[pygame.K_UP]:
+                self.player_pos[1] -= self.speed
+                moved = True
+            if keys[pygame.K_DOWN]:
+                self.player_pos[1] += self.speed
+                moved = True
 
-        # --- エンディング・ゲームオーバー ---
-        elif self.state == STATE_ENDING:
-            self.screen.fill(WHITE)
-            self.screen.blit(self.font.render("MISSION COMPLETE!", True, BLACK), (280, 250))
+            self.check_map_transition()
+            if moved and self.current_map == MAP_FIELD:
+                self.check_random_encounter()
+            
+            if self.current_map == MAP_CAMPUS and self.player_pos[0] > 700:
+                self.start_transition_to_battle(is_boss=True)
+
+        if self.state == STATE_TRANSITION:  # 遷移演出
+            self.update_transition()
+
+    
+    def gain_exp(self, amount):  # 重要：経験値とレベルアップ処理
+        self.player_exp += amount
+        self.battle_logs.append(f"{amount} Expを獲得！")
         
-        elif self.state == STATE_GAME_OVER:
-            self.screen.fill(BLACK)
-            self.screen.blit(self.font.render("GAME OVER... (R to Retry)", True, RED), (250, 250))
+        while self.player_exp >= self.player_next_exp:  # レベルアップ判定
+            self.player_level += 1
+            self.player_exp -= self.player_next_exp # 現在のExpを消費して次のレベルへ
+            self.player_next_exp = int(self.player_next_exp * 1.5) # 必要経験値増加
+            
+            # ステータス上昇
+            self.player_max_hp += 20
+            self.player_max_mp += 10
+            
+            # 全回復（ボーナス）
+            self.player_hp = self.player_max_hp
+            self.player_mp = self.player_max_mp
+            
+            self.battle_logs.append(f"レベルアップ！ Lv{self.player_level} になった！")
+            self.battle_logs.append("最大HPとMPが増え、全回復した！")
 
-        pygame.display.flip()
+    def start_transition_to_battle(self, is_boss):  # 遷移演出処理　担当田代
+        self.state = STATE_TRANSITION
+        self.transition_step = 0
+        self.transition_wait_timer = 0
+        self.next_is_boss = is_boss
 
-    # --- ヘルパーメソッド ---
-    def check_map_transition(self):
+    def update_transition(self):  # 遷移演出　担当田代
+        if self.transition_step < SCREEN_WIDTH + 100:  # 画面より大きくなるまで広げる
+            self.transition_step += self.transition_speed
+        else:  # 画面が真っ暗になったらタイマーを作動させる
+            self.transition_wait_timer += 1
+            if self.transition_wait_timer > 60:  # 60フレーム（約1秒）待ったら戦闘開始
+                self.start_battle(self.next_is_boss)
+        
+    def check_map_transition(self):  # 画面端でのマップ切り替え
         if self.player_pos[0] > SCREEN_WIDTH:
             if self.current_map < MAP_CAMPUS:
-                self.current_map += 1; self.player_pos[0] = 10
-            else: self.player_pos[0] = SCREEN_WIDTH - self.player_size
+                self.current_map += 1
+                self.player_pos[0] = 10
+            else:
+                self.player_pos[0] = SCREEN_WIDTH - self.player_size
         elif self.player_pos[0] < 0:
             if self.current_map > MAP_VILLAGE:
                 self.current_map -= 1; self.player_pos[0] = SCREEN_WIDTH - 10
@@ -356,7 +317,8 @@ class Game:
         if self.player_pos[1] > SCREEN_HEIGHT - self.player_size: self.player_pos[1] = SCREEN_HEIGHT - self.player_size
 
     def check_random_encounter(self):
-        if random.randint(0, 100) < 1: self.start_battle(is_boss=False)
+        if random.randint(0, 100) < 1:
+            self.start_transition_to_battle(is_boss=False)
 
     def start_battle(self, is_boss):
         self.state = STATE_BATTLE
@@ -377,51 +339,206 @@ class Game:
                 "img": self.boss_image 
             })
         else:
-            self.enemy_hp = 100
-            self.add_message("敵が現れた！")
-            num = random.randint(1, 2)
-            for i in range(num):
-                img = random.choice(self.enemy_images) if self.enemy_images else None
+            num_enemies = random.randint(1, 3)
+            for i in range(num_enemies):
+                x_pos = 150 + i * 180
                 self.enemies.append({
-                    "name": f"Enemy{i}", 
-                    "hp": 50, 
-                    "max_hp": 50, 
-                    "color": BLUE, 
-                    "rect": pygame.Rect(150 + i*200, 100, 100, 100),
-                    "img": img
+                    "name": f"課題{i+1}",
+                    "hp": 50, "max_hp": 50, "atk": 10, "xp": 40, # 雑魚は40Exp
+                    "color": BLUE, "rect": pygame.Rect(x_pos, 100, 100, 100),
+                    "flash_timer": 0
                 })
+    
+    def execute_turn(self, action_type):
+        self.battle_logs = [] 
+        valid_targets = [e for e in self.enemies if e["hp"] > 0]
+
+        if not valid_targets and len(self.enemies) == 0:
+            return
+
+        # --- プレイヤー行動 ---
+        # レベルに応じた威力補正
+        level_bonus = (self.player_level - 1) * 2
+
+        if action_type == "HOIMI":
+            if self.player_mp >= 10:
+                self.player_mp -= 10
+                base_heal = random.randint(30, 50)
+                heal_amount = base_heal + level_bonus # レベルで回復量も増える
+                
+                old_hp = self.player_hp
+                self.player_hp = min(self.player_max_hp, self.player_hp + heal_amount)
+                recovered = self.player_hp - old_hp
+                self.battle_logs.append(f"ホイミ！ HPが{recovered}回復！")
+            else:
+                self.battle_logs.append("MPが足りない！")
+
+        elif action_type == "MAGIC":
+            if self.player_mp >= 30:
+                if valid_targets:
+                    target = valid_targets[0]
+                    self.player_mp -= 30
+                    
+                    base_dmg = random.randint(50, 80)
+                    damage = base_dmg + (level_bonus * 2) # 魔法はレベル恩恵大
+                    
+                    if random.randint(0, 100) < 10:
+                        damage = int(damage * 1.5)
+                        self.battle_logs.append("会心の一撃！！")
+                    
+                    target["hp"] -= damage
+                    target["flash_timer"] = 10 
+                    self.battle_logs.append(f"魔法攻撃！{target['name']}に{damage}ダメ！")
+            else:
+                self.battle_logs.append("MPが足りない！")
+
+        elif action_type == "ATTACK":
+            if valid_targets:
+                target = valid_targets[0]
+                base_dmg = random.randint(20, 30)
+                damage = base_dmg + level_bonus
+
+                if random.randint(0, 100) < 15:
+                    damage = damage * 2
+                    self.battle_logs.append("会心の一撃！！")
+
+                target["hp"] -= damage
+                target["flash_timer"] = 10 
+                self.battle_logs.append(f"攻撃！ {target['name']}に{damage}ダメ！")
+
+        # --- 敵の反撃 ---
+        surviving_enemies = [e for e in self.enemies if e["hp"] > 0]
+        total_dmg = 0
+        for enemy in surviving_enemies:
+            hit_chance = random.randint(0, 100)
+            if hit_chance < 20: 
+                self.battle_logs.append(f"{enemy['name']}の攻撃ミス！")
+            else:
+                dmg = random.randint(enemy["atk"] - 3, enemy["atk"] + 3)
+                total_dmg += dmg
+        
+        if total_dmg > 0:
+            self.player_hp -= total_dmg
+            self.battle_logs.append(f"敵の攻撃！ 計{total_dmg}のダメージ！")
+
+        if self.player_hp <= 0:
+            self.player_hp = 0
+            self.end_battle(win=False)
 
     def end_battle(self, win):
-        self.state = STATE_ENDING if (win and self.is_boss_battle) else STATE_MAP
-        if not win: self.game_over()
+        if win:
+            if self.is_boss_battle:
+                self.state = STATE_ENDING
+            else:
+                self.state = STATE_MAP
+        else:
+            self.state = STATE_GAME_OVER
 
-    def game_over(self): self.state = STATE_GAME_OVER
-    
-    def restart(self):
-        self.state = STATE_MAP; self.current_map = MAP_VILLAGE
-        self.player_hp = self.player_max_hp; self.player_pos = [400, 200]
+    def draw_map_elements(self):
+        color = GREEN
+        if self.current_map == MAP_VILLAGE: color = (100, 200, 100)
+        elif self.current_map == MAP_CAMPUS: color = GRAY
+        pygame.draw.rect(self.screen, color, (0, 0, SCREEN_WIDTH, SCREEN_HEIGHT))
+        pygame.draw.rect(self.screen, RED, (*self.player_pos, self.player_size, self.player_size))
+        
+        # マップ画面のステータス表示
+        status_str = f"Lv:{self.player_level}  HP:{self.player_hp}/{self.player_max_hp}"
+        status = self.font.render(status_str, True, BLACK)
+        self.screen.blit(status, (550, 20))
 
-    def add_message(self, text):
-        self.message_log.append(text)
-        if len(self.message_log) > self.max_messages: self.message_log.pop(0)
+    def draw(self):
+        #self.screen.fill(BLACK)  各状態で背景を描く
+        if self.state == STATE_MAP:
+            self.screen.fill(BLACK)
+            self.draw_map_elements()
 
-    def enemy_counterattack(self):
-        dmg = random.randint(10, 30)
-        dmg = int(dmg * self.def_multiplier)
-        self.player_hp -= dmg
-        self.add_message(f"敵の反撃！ {dmg} ダメージ")
-        if self.player_hp <= 0: self.game_over()
-        if self.atk_buff_turns > 0: self.atk_buff_turns -= 1; 
-        if self.atk_buff_turns == 0: self.atk_multiplier = 1.0
-        if self.def_buff_turns > 0: self.def_buff_turns -= 1; 
-        if self.def_buff_turns == 0: self.def_multiplier = 1.0
-    
-    def gain_exp(self, amount):
-        self.player_exp += amount
-        while self.player_exp >= self.player_next_exp:
-            self.player_level += 1; self.player_exp -= self.player_next_exp
-            self.player_next_exp = int(self.player_next_exp * 1.5)
-            self.player_max_hp += 20; self.player_hp = self.player_max_hp
+        elif self.state == STATE_BATTLE:
+            self.screen.fill(BLACK)
+            for enemy in self.enemies:
+                if "death_timer" in enemy:
+                    if (enemy["death_timer"] // 5) % 2 == 0:
+                        pygame.draw.rect(self.screen, (100, 0, 0), enemy["rect"])
+                else:
+                    draw_color = enemy["color"]
+                    if enemy.get("flash_timer", 0) > 0:
+                        draw_color = FLASH_COLOR
+                    pygame.draw.rect(self.screen, draw_color, enemy["rect"])
+                    
+                    if enemy["hp"] > 0:
+                        hp_rate = max(0, enemy["hp"] / enemy["max_hp"])
+                        pygame.draw.rect(self.screen, RED, (enemy["rect"].x, enemy["rect"].y - 10, enemy["rect"].width, 5))
+                        pygame.draw.rect(self.screen, GREEN, (enemy["rect"].x, enemy["rect"].y - 10, enemy["rect"].width * hp_rate, 5))
+
+            # UI描画
+            ui_y_start = 350
+            ui_height = SCREEN_HEIGHT - ui_y_start
+            pygame.draw.rect(self.screen, BLACK, (0, ui_y_start, SCREEN_WIDTH, ui_height))
+            pygame.draw.rect(self.screen, WHITE, (0, ui_y_start, SCREEN_WIDTH, ui_height), 2)
+
+            # ステータス表示（Lv, Exp追加）
+            hp_color = WHITE if self.player_hp > 30 else RED
+            
+            # LvとExp
+            lv_text = f"Lv: {self.player_level}"
+            exp_text = f"Exp: {self.player_exp}/{self.player_next_exp}"
+            self.screen.blit(self.font.render(lv_text, True, GOLD), (30, ui_y_start + 15))
+            self.screen.blit(self.small_font.render(exp_text, True, WHITE), (120, ui_y_start + 20))
+
+            # HPとMP
+            hp_text = f"HP: {self.player_hp}/{self.player_max_hp}"
+            mp_text = f"MP: {self.player_mp}/{self.player_max_mp}"
+            self.screen.blit(self.font.render(hp_text, True, hp_color), (300, ui_y_start + 15))
+            self.screen.blit(self.font.render(mp_text, True, CYAN), (550, ui_y_start + 15))
+
+            # コマンド
+            cmd_text = "[A]たたかう  [M]まほう(30)  [H]ホイミ(10)"
+            self.screen.blit(self.font.render(cmd_text, True, YELLOW), (30, ui_y_start + 60))
+
+            # 区切り線
+            line_y = ui_y_start + 100
+            pygame.draw.line(self.screen, WHITE, (0, line_y), (SCREEN_WIDTH, line_y), 1)
+
+            # ログ
+            display_logs = self.battle_logs[-5:] 
+            for i, log in enumerate(display_logs):
+                log_color = WHITE
+                if "会心" in log: log_color = YELLOW
+                if "やっつけた" in log: log_color = (255, 100, 100)
+                if "レベルアップ" in log: log_color = GOLD # レベルアップは金色
+                
+                txt = self.small_font.render(log, True, log_color)
+                self.screen.blit(txt, (30, line_y + 10 + i * 28))
+
+        elif self.state == STATE_TRANSITION:
+            self.draw_map_elements()  # 中央から広がる黒い矩形を描く
+            rect_w = self.transition_step
+            rect_h = int(self.transition_step * (SCREEN_HEIGHT / SCREEN_WIDTH))
+            
+            # 中央座標
+            center_x = SCREEN_WIDTH // 2
+            center_y = SCREEN_HEIGHT // 2
+            
+            # Rect作成（中央から広げる計算）
+            black_rect = pygame.Rect(
+                center_x - rect_w // 2,
+                center_y - rect_h // 2,
+                rect_w,
+                rect_h
+            )
+            pygame.draw.rect(self.screen, BLACK, black_rect)
+
+        elif self.state == STATE_ENDING:
+            self.screen.fill(WHITE)
+            msg = self.font.render("MISSION COMPLETE!", True, BLACK)
+            self.screen.blit(msg, (200, 300))
+
+        elif self.state == STATE_GAME_OVER:
+            self.screen.fill(BLACK)
+            msg = self.font.render("GAME OVER...", True, RED)
+            self.screen.blit(msg, (300, 300))
+
+        pygame.display.flip()
 
 if __name__ == "__main__":
-    Game().run()
+    game = Game()
+    game.run()
