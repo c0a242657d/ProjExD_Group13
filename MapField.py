@@ -161,7 +161,7 @@ class MapField: # フィールド画面クラス
         camera_x = max(0, min(camera_x, map_width - SCREEN_WIDTH)) # カメラX座標調整
         camera_y = max(0, min(camera_y, map_height - SCREEN_HEIGHT)) # カメラY座標調整
 
-        print(camera_x, camera_y)  # デバッグ用カメラ位置表示
+        # print(camera_x, camera_y)  # デバッグ用カメラ位置表示
 
         # マップ描画
         for y, row in enumerate(self.map_data): # マップデータ走査
